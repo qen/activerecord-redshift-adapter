@@ -413,6 +413,20 @@ module ActiveRecord
       end
 
       def supports_insert_with_returning?
+        false
+      end
+
+      # see active_record/relation.rb:41
+      def next_sequence_value(sequence_name)
+        result  = exec_no_cache("select nextval('#{sequence_name}');", [])
+        ret     = ActiveRecord::Result.new(result.fields, result_as_array(result))
+        result.clear
+
+        Integer(ret.rows.first.first)
+      end
+
+      # see active_record/relation.rb:40
+      def prefetch_primary_key?(table_name = nil)
         true
       end
 
@@ -617,6 +631,13 @@ module ActiveRecord
         end
       end
       alias :create :insert
+      
+      def insert(arel, name = nil, pk = nil, id_value = nil, sequence_name = nil, binds = [])
+        #sql, binds = sql_for_insert_no_returning(to_sql(arel, binds), pk, id_value, sequence_name, binds)
+        sql     = to_sql(arel, binds)
+        value   = exec_insert(sql, name, binds)
+        id_value || last_inserted_id(value)
+      end
 
       # create a 2D array representing the result set
       def result_as_array(res) #:nodoc:
@@ -703,14 +724,6 @@ module ActiveRecord
       alias :exec_update :exec_delete
 
       def sql_for_insert(sql, pk, id_value, sequence_name, binds)
-        unless pk
-          # Extract the table from the insert sql. Yuck.
-          table_ref = extract_table_ref_from_insert_sql(sql)
-          pk = primary_key(table_ref) if table_ref
-        end
-
-        sql = "#{sql} RETURNING #{quote_column_name(pk)}" if pk
-
         [sql, binds]
       end
 
